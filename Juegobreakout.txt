@@ -1,0 +1,285 @@
+import pygame
+import threading
+import sys
+import random
+import os
+
+
+class Paddle:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, 80, 10)
+        self.speed_multiplier = 3
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, (230, 144, 255), self.rect)
+
+    def move(self, speed):
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT] and self.rect.left > 0:
+            self.rect.move_ip(-speed * self.speed_multiplier, 0)
+        elif keys[pygame.K_RIGHT] and self.rect.right < 800:
+            self.rect.move_ip(speed * self.speed_multiplier, 0)
+
+
+class Brick:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.rect = pygame.Rect(x, y, 57, 20)
+        self.color = (random.randint(155, 225), random.randint(100, 225), random.randint(180, 225))
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, self.color, self.rect)
+
+
+class Ball:
+    def __init__(self, x, y):
+        self.speed = None
+        self.dy = None
+        self.dx = None
+        self.rect = None
+        self.start_x = x
+        self.start_y = y
+        self.reset()
+
+    def reset(self):
+        self.rect = pygame.Rect(self.start_x, self.start_y, 12, 12)
+        self.dx = 2
+        self.dy = -2
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, (128, 128, 128), self.rect)
+
+    def move(self, speed):
+        self.rect.move_ip(self.dx * speed, self.dy * speed)
+        self.speed = 4
+
+    def bounce(self, paddle, bricks):
+        if self.rect.left < 0 or self.rect.right > 800:
+            self.dx *= -1
+        elif self.rect.top < 0 or self.rect.colliderect(paddle.rect):
+            self.dy *= -1
+        else:
+            hit_brick = self.rect.collidelist(bricks)
+            if hit_brick != -1:
+                self.dy *= -1
+                pygame.mixer.Sound("sonidos/caer.mp3").play()
+                return hit_brick
+
+
+class LifeCounter(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.lives = 2
+        self.ball = None
+
+    def run(self):
+        while True:
+            if self.ball.rect.bottom > 600:
+                self.lives -= 1
+                self.ball.reset()
+                pygame.time.wait(500)
+
+
+class ScoreCounter(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.score = 0
+
+    def run(self):
+        while True:
+            pass
+
+
+class BreakoutGame:
+    def __init__(self, width=800, height=600):
+        self.height = 800
+        self.width = 600
+        self.bricks = None
+        pygame.init()
+        self.font_path = os.path.join('fonts', 'Huglove.otf')
+        self.font = pygame.font.Font(self.font_path, 10)
+        self.title_font = pygame.font.Font("fonts/HelpMe.ttf", 75)
+        self.title2_font = pygame.font.Font("fonts/HelpMe.ttf", 50)
+        self.start_font = pygame.font.Font("fonts/Huglove.otf", 40)
+        self.win = pygame.font.Font("fonts/HelpMe.ttf", 70)
+        self.game_over_font = pygame.font.Font("fonts/Rockfire-Regular.otf", 90)
+        self.tryagain = pygame.font.Font("fonts/Rolling Stright.otf", 100)
+        self.salir = pygame.font.Font("fonts/Rolling Stright.otf", 100)
+        self.score_font = pygame.font.Font(self.font_path, 35)
+        self.lives_font = pygame.font.Font("fonts/Rockfire-Regular.otf", 40)
+        self.width = width
+        self.height = height
+        self.screen = pygame.display.set_mode((width, height))
+        self.clock = pygame.time.Clock()
+        self.paddle = Paddle(width / 2, height - 15)
+        self.ball = Ball(width / 2, height / 2)
+        self.life_counter = LifeCounter()
+        self.score_counter = ScoreCounter()
+        self.lives = self.life_counter.lives
+        self.score = self.score_counter.score
+        self.life_counter.ball = self.ball
+
+        pygame.mixer.music.load("sonidos/deku.mp3")
+        self.coin_sound = pygame.mixer.Sound("sonidos/coin.mp3")
+        self.gameover_sound = pygame.mixer.Sound("sonidos/gameover.mp3")
+        self.press2_sound = pygame.mixer.Sound("sonidos/press2.mp3")
+        self.caw_sound = pygame.mixer.Sound("sonidos/caw.mp3")
+        self.win_sound = pygame.mixer.Sound("sonidos/win.mp3")
+
+        self.reset_bricks()
+
+    def reset_bricks(self):
+        self.bricks = []
+        for i in range(5):
+            for j in range(12):
+                self.bricks.append(Brick(j * 60 + 50, i * 20 + 70))
+
+    def draw_text(self, text, font, color, pos):
+        surface = font.render(text, True, color)
+        rect = surface.get_rect(center=pos)
+        self.screen.blit(surface, rect)
+
+    def show_start_screen(self):
+        background = pygame.image.load("fondos/fantasma2.gif").convert()
+        background = pygame.transform.scale(background, (self.width, self.height))
+
+        pygame.mixer.music.play(-1)
+        while True:
+            self.screen.blit(background, (0, 0))
+            self.draw_text("BREAK", self.title_font, (255, 255, 255), (self.width / 5, self.height / 5 + 60))
+            self.draw_text("OUT", self.title2_font, (255, 255, 255), (self.width / 4, self.height / 3 + 50))
+            self.draw_text("Start Game", self.start_font, (255, 165, 0), (self.width / 2, self.height / 5 + 350))
+            pygame.display.flip()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    pos = pygame.mouse.get_pos()
+                    if (self.width / 2 - 150 <= pos[0] <= self.width / 2 + 150) and (
+                            self.height / 2 + 100 <= pos[1] <= self.height / 2 + 200):
+                        self.coin_sound.play()
+                        pygame.mixer.music.stop()
+                        return
+
+    def show_game_over_screen(self):
+        background = pygame.image.load("fondos/ff - copia.jpg").convert()
+        background = pygame.transform.scale(background, (self.width, self.height))
+
+        self.screen.blit(background, (0, 0))
+        self.draw_text("G a m e  O v e r", self.game_over_font, (255, 255, 255), (self.width / 2, self.height / 5))
+
+        try_again_rect = pygame.Rect(self.width / 2 - 150, self.height / 9 + 350, 300, 50)
+
+        self.draw_text("Try Again", self.tryagain, (255, 165, 0), (self.width / 2, self.height / 7 + 350))
+
+        self.draw_text("Salir", self.salir, (255, 165, 0), (self.width / 2, self.height / 4 + 350))
+
+        pygame.display.flip()
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    pos = pygame.mouse.get_pos()
+                    if try_again_rect.collidepoint(pos):
+                        self.press2_sound.play()
+                        self.reset_game()
+                        return
+                    elif (self.width / 2 - 150 <= pos[0] <= self.width / 2 + 150) and (
+                            self.height / 4 + 300 <= pos[1] <= self.height / 4 + 400):
+                        self.caw_sound.play()
+                        pygame.quit()
+                        sys.exit()
+
+    def reset_game(self):
+        self.reset_bricks()
+        self.ball.reset()
+        self.paddle = Paddle(self.width / 2, self.height - 20)
+        self.score = 0
+        self.life_counter.lives = 3
+
+    def show_win_screen(self):
+        background = pygame.image.load("fondos/ftfc.gif").convert()
+        background = pygame.transform.scale(background, (self.width, self.height))
+
+        self.screen.blit(background, (0, 0))
+        self.draw_text("W I N !", self.win, (255, 255, 255), (self.width / 2, self.height / 4))
+        pygame.display.flip()
+        self.win_sound.play()
+        pygame.time.wait(2000)
+        pygame.quit()
+        sys.exit()
+
+    def run_game(self):
+        self.show_start_screen()
+        self.life_counter.start()
+        self.score_counter.start()
+
+        pygame.mixer.music.load("sonidos/fondojuego.mp3")
+        pygame.mixer.music.play(-1)
+
+        sound_played = False
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+            self.paddle.move(2)
+
+            if not self.bricks:
+                self.ball.dx = 0
+                self.ball.dy = 0
+                pygame.display.flip()
+                pygame.time.wait(2000)
+                self.reset_game()
+                continue
+
+            self.ball.move(2)
+            hit_brick = self.ball.bounce(self.paddle, self.bricks)
+
+            if hit_brick is not None:
+                del self.bricks[hit_brick]
+                self.score += 5
+
+            if self.score >= 300:
+                pygame.mixer.music.stop()
+                self.show_win_screen()
+
+            if self.ball.rect.bottom > self.height:
+                if self.life_counter.lives == 0:
+                    pygame.mixer.music.stop()  
+                    self.gameover_sound.play()
+                    self.show_game_over_screen()
+                self.life_counter.lives -= 1
+                self.ball.reset()
+                pygame.time.wait(500)
+
+            background = pygame.image.load('fondos/fna - copia.gif').convert()
+            background = pygame.transform.scale(background, (self.width, self.height))
+
+            if not sound_played:
+                pygame.mixer.music.load("sonidos/fondojuego.mp3")
+                pygame.mixer.music.play(-1)
+                sound_played = True
+
+            self.screen.blit(background, (0, 0))
+            self.paddle.draw(self.screen)
+            self.ball.draw(self.screen)
+            for brick in self.bricks:
+                brick.draw(self.screen)
+            self.draw_text(f"Points: {self.score}", self.score_font, (0, 0, 0), (self.width - 100, 30))
+            self.draw_text(f" x: {self.life_counter.lives}", self.lives_font, (0, 0, 0), (90, 20))
+            pygame.display.flip()
+            self.clock.tick(60)
+
+
+if __name__ == "__main__":
+    breakout = BreakoutGame()
+    breakout.run_game()
